@@ -179,6 +179,27 @@ add index `place_id` (`place_id` ASC);
 3. EventReqDTO의 action을 확인하여 ADD면 addReviewEvent 메소드를, MOD면 modifyReviewEvent 메소드를, DELETE면 deleteReviewEvent 메소드를 실행합니다.
 &nbsp;
 ### addReviewEvent
+```java
+    // 리뷰 등록 시 포인트 증가
+    private String addReviewEvent(EventReqDTO eventReqDTO) {
+
+        // Review 테이블에서 Review 불러오기
+        Review review = reviewRepository.findReviewByReviewId(UuidManager.toIndexingUuid(eventReqDTO.getReviewId()))
+                .orElseThrow(ReviewNotFoundException::new);
+        Place place = review.getPlace();
+        User user = review.getUser();
+
+        // 회원의 포인트 변경 (update)
+        boolean isBonus = isBonus(place, review.getId());
+        int userGetPoint = reviewPointCalculator.calculateAddActionPoint(eventReqDTO, isBonus);
+        user.changePoint(userGetPoint);
+
+        // 이력 남기기 (insert)
+        pointRepository.save(eventReqDTO.createReviewPoint(userGetPoint, user, place));
+
+        return user.getUserId();
+    }
+```
 리뷰 작성 시 실행되는 메소드입니다. 리뷰를 통해 얻을 수 있는 총 포인트를 계산하고 user 테이블의 totalPoints의 값을 증가시키고 포인트 이력을 저장합니다.
 1. 요청으로 들어온 UUID의 reviewId를 UuidManager 클래스를 통해 값을 변경하여 DB에 저장된 review를 user와 place를 조인하여 함께 불러옵니다.
     - reviewId의 uuid 형태의 id 값은 uuid를 "-"으로 나누고 1-2-3-4-5 형태로 uuid 값이 나뉘어 있을 때 이 값을 32145로 붙여 DB에 저장되어 있다고 가정합니다. 이는 인덱스 성능을 높이기 위함입니다.
@@ -191,6 +212,26 @@ add index `place_id` (`place_id` ASC);
 
 &nbsp;
 ### modifyReviewEvent
+```java
+    // 리뷰 수정
+    private String modifyReviewEvent(EventReqDTO eventReqDTO) {
+
+        Review review = reviewRepository.findReviewByReviewId(UuidManager.toIndexingUuid(eventReqDTO.getReviewId()))
+                .orElseThrow(ReviewNotFoundException::new);
+        Place place = review.getPlace();
+        User user = review.getUser();
+
+        boolean isBonus = isBonus(place, review.getId());
+        int point = reviewPointCalculator.calculateModifyActionPoint(eventReqDTO, isBonus, user, place);
+
+        if (point != 0) {
+            user.changePoint(point);
+            pointRepository.save(eventReqDTO.createReviewPoint(point, user, place));
+        }
+
+        return user.getUserId();
+    }
+```
 리뷰 수정 시 실행되는 메소드입니다. 리뷰를 통해 얻을 수 있는 총 포인트를 계산하고 포인트가 0점이 아니라면 user 테이블의 totalPoints 값을 수정하고 포인트 이력을 저장합니다.
 1. 요청으로 들어온 UUID의 reviewId로 reivew, user, place를 조인하여 함께 조회합니다.
     - addReviewEvent와 동일한 방식입니다.
@@ -203,6 +244,26 @@ add index `place_id` (`place_id` ASC);
 
 &nbsp;
 ### deleteReviewEvent
+```java
+    // 리뷰 삭제
+    private String deleteReviewEvent(EventReqDTO eventReqDTO) {
+
+        Review review = reviewRepository.findReviewByReviewId(UuidManager.toIndexingUuid(eventReqDTO.getReviewId()))
+                .orElseThrow(ReviewNotFoundException::new);
+        Place place = review.getPlace();
+        User user = review.getUser();
+
+        // 회원의 포인트 차감
+        boolean isBonus = isBonus(place, review.getId());
+        int minusPoint = reviewPointCalculator.calculateDeleteActionPoint(eventReqDTO, isBonus);
+        user.changePoint(minusPoint);
+
+        // 리뷰 포인트 변경 이력
+        pointRepository.save(eventReqDTO.createReviewPoint(minusPoint, user, place));
+
+        return user.getUserId();
+    }
+```
 리뷰 삭제 시 실행되는 메소드입니다. 요청된 리뷰를 삭제함으로써 잃는 포인트를 계산하고 회원의 총 포인트 값을 수정하고 포인트 이력을 저장합니다.
 1. 요청으로 들어온 UUID의 reviewId로 reivew, user, place를 조인하여 함께 조회합니다.
     - addReviewEvent와 동일한 방식입니다.
@@ -212,7 +273,115 @@ add index `place_id` (`place_id` ASC);
 5. 리뷰 포인트 변경 이력을 저장합니다.
 
 &nbsp;
+### isBonus
+```java
+    // 리뷰 등록 시 보너스 점수를 얻는지 확인
+    private boolean isBonus(Place place, Long review_id) {
+        return reviewRepository.findFirstByPlaceOrderByRegDateAsc(place)
+                .map(review -> review.getId().equals(review_id))
+                .orElse(true);
+    }
+```
+요청으로 들어온 리뷰가 보너스 점수를 얻을 수 있는지 확인하는 메소드입니다. 요청으로 들어온 Place의 모든 리뷰를 날짜순으로 정렬하여 가장 먼저 저장된 리뷰를 찾아 요청으로 들어온 review_id와 비교합니다. 같으면 보너스 점수를 얻고 다르면 얻지 못합니다.
+
+&nbsp;
+
+### calculateAddActionPoint
+```java
+    // 리뷰 등록 시 몇 포인트를 얻는지 계산
+    public int calculateAddActionPoint(EventReqDTO eventReqDTO, boolean isBonus) {
+
+        int point = 0;
+        if (eventReqDTO.hasContent()) {
+            point++;
+        }
+
+        if (eventReqDTO.hasAttachedPhoto()) {
+            point++;
+        }
+
+        if (isBonus) {
+            point++;
+        }
+
+        return point;
+    }
+```
+리뷰 등록 시 요청된 리뷰로 얻을 수 있는 총 포인트를 계산하는 메소드입니다.
+
+&nbsp;
+
+### calculateDeleteActionPoint
+```java
+    // 리뷰 삭제 시 몇 포인트를 감소해야 하는지 계산
+    public int calculateDeleteActionPoint(EventReqDTO eventReqDTO, boolean isBonus) {
+
+        int point = 0;
+        if (eventReqDTO.hasContent()) {
+            point++;
+        }
+
+        if (eventReqDTO.hasAttachedPhoto()) {
+            point++;
+        }
+
+        if (isBonus) {
+            point++;
+        }
+
+        return -point;
+    }
+```
+리뷰 삭제 시 요청된 리뷰로 잃어야 하는 총 포인트를 계산하는 메소드입니다.
+
+&nbsp;
+
+### calculateModifyActionPoint
+```java
+    // 리뷰 수정 시 몇 포인트를 얻는지 계산
+    public int calculateModifyActionPoint(EventReqDTO eventReqDTO, boolean isBonus, User user, Place place) {
+
+        int point = 0;
+        if (eventReqDTO.hasContent()) {
+            point++;
+        }
+
+        if (eventReqDTO.hasAttachedPhoto()) {
+            point++;
+        }
+
+        if (isBonus) {
+            point++;
+        }
+
+        return point - sumPointValues(user, place);
+    }
+```
+리뷰 수정 시 요청된 리뷰를 통해 얻을 수 있는 포인트와 이미 회원이 이 전에 해당 장소에대한 리뷰를 작성, 수정, 삭제함으로써 얻은 총 포인트의 차이를 통해 결과적으로 회원이 요청된 장소에 리뷰를 수정함으로써 얻거나 잃는 총 포인트를 구하는 메소드입니다.
+
+&nbsp;
+### sumPointsValues
+```java
+    // 리뷰 포인트에 대한 이력을 불러와서 모든 포인트 변동 사항을 더한다.
+    private int sumPointValues(User user, Place place) {
+        return pointRepository.findReviewPointsByUserAndPlace(user, place).stream()
+                .mapToInt(ReviewPoint::getValue)
+                .sum();
+    }
+```
+이 전에 회원이 해당 장소에 대한 리뷰로 얻은 모든 포인트의 합을 구합니다.
+
+&nbsp;
 ## PointCheckService  
+```java
+    @Transactional(readOnly = true)
+    public int getTotalPoints(String userId) {
+
+        User user = userRepository.findUserByUserId(userId).orElseThrow(UserNotFoundException::new);
+
+        return user.getTotalPoints();
+    }
+```
 1. kong.point.controller.PointCheckController에서 포인트 조회 API 요청을 받습니다.
     - points 메소드가 실행됩니다.
 2. kong.point.service.PointCheckService의 getTotalPoints(String userId) 메소드를 실행합니다.
