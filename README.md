@@ -14,39 +14,51 @@
 
 # 폴더 구조
 ```bash
-└─kong
-    ├─attached_photo
-    │  ├─domain
-    │  └─repository
-    ├─common
-    │  ├─exception
-    │  ├─response
-    │  │  └─dto
-    │  └─uuid
-    ├─event
-    │  ├─controller
-    │  ├─dto
-    │  ├─service
-    │  └─util
-    ├─place
-    │  ├─domain
-    │  ├─exception
-    │  └─repository
-    ├─point
-    │  ├─controller
-    │  ├─domain
-    │  ├─repository
-    │  ├─service
-    │  └─util
-    ├─review
-    │  ├─domain
-    │  ├─exception
-    │  ├─repository
-    │  └─util
-    └─user
-        ├─domain
-        ├─exception
-        └─repository
+├─main
+│  ├─java
+│  │  └─kong
+│  │      ├─attached_photo
+│  │      │  ├─domain
+│  │      │  └─repository
+│  │      ├─common
+│  │      │  ├─exception
+│  │      │  ├─response
+│  │      │  │  └─dto
+│  │      │  └─uuid
+│  │      ├─event
+│  │      │  ├─controller
+│  │      │  ├─dto
+│  │      │  ├─service
+│  │      │  └─util
+│  │      ├─place
+│  │      │  ├─domain
+│  │      │  ├─exception
+│  │      │  └─repository
+│  │      ├─point
+│  │      │  ├─controller
+│  │      │  ├─domain
+│  │      │  ├─repository
+│  │      │  ├─service
+│  │      │  └─util
+│  │      ├─review
+│  │      │  ├─domain
+│  │      │  ├─exception
+│  │      │  ├─repository
+│  │      │  └─util
+│  │      └─user
+│  │          ├─domain
+│  │          ├─exception
+│  │          └─repository
+│  └─resources
+│      ├─static
+│      └─templates
+└─test
+    └─java
+        └─kong
+            ├─point
+            │  └─service
+            ├─service
+            └─triple_api
 ```
 - 도메인 별로 폴더를 분류했습니다. 
 - 하위 폴더
@@ -57,6 +69,10 @@
     - dto : dto 클래스
     - util : enum 타입, 특정 기능 수행을 위한 클래스
     - exception : 비즈니스 예외 클래스
+- test 
+    - point.service : 회원 포인트 조회 API에 대한 테스트 코드
+    - kong.service : 리뷰 포인트 적립 API에 대한 테스트 코드
+    - 테스트 코드는 Junit5를 이용한 통합테스트 코드를 작성하였습니다.
 
 &nbsp;
 # ERD
